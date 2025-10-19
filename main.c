@@ -4,17 +4,23 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <sys/utsname.h>
+#include <sys/stat.h>
 #include <libgen.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <time.h>
 
-////////////////////////////////////////////////////////////////////
-//////////////////      Built In Commands Section
-///////////////////////////////////////////////////////////////////
-
+   ///////////////////////////////////////////////////////////
+  //////////////// Built In Commands Section ////////////////
+ ///////////////////////////////////////////////////////////
 
 // Func declarations for built-in shell commands
 int MicroShell_cd(char **args);
 int MicroShell_curd(char **args);
+int MicroShell_mdir(char **args);
+int MicroShell_rdir(char **args);
+int MicroShell_ip(char **args);
+int MicroShell_pswdrand(char **args);
 int MicroShell_help(char **args);
 int MicroShell_exit(char **args);
 
@@ -22,20 +28,32 @@ int MicroShell_exit(char **args);
 char *builtin_str[] = {
     "cd",
     "curd",
+    "mdir",
+    "rdir",
+    "ip",
+    "pswdrand",
     "help",
     "exit"
 };
 
 char *builtin_desc[] = {
-    "cd: Change the current working directory \t\t Ex: cd /usr/bin/path",
-    "curd: Lists the current directory and path \t\t Ex: curd",
-    "help: Lists the commands and their uses \t\t Ex: help",
-    "exit: Exits out of the terminal \t\t\t\t Ex: exit"
+    "cd: Change the current working directory \t\t\t\t Ex: cd /usr/bin/path",
+    "curd: Lists the current directory and path \t\t\t\t Ex: curd",
+    "mdir: Creates a directory in the current working path \t Ex: mdir /test",
+    "rdir: Removes a directory in the current working path \t Ex: rdir /test",
+    "ip: Tells you the ip of the current device \t\t\t\t Ex: ip",
+    "pswdrand: A simple password generator \t\t\t\t\t: Ex pswdrand {LENGTH}",
+    "help: Lists the commands and their uses \t\t\t\t Ex: help",
+    "exit: Exits out of the terminal \t\t\t\t\t\t Ex: exit"
 };
 
 int (*builtin_func[])(char **) = {
     &MicroShell_cd,
     &MicroShell_curd,
+    &MicroShell_mdir,
+    &MicroShell_rdir,
+    &MicroShell_ip,
+    &MicroShell_pswdrand,
     &MicroShell_help,
     &MicroShell_exit
 };
@@ -80,6 +98,128 @@ int MicroShell_curd(char **args) {
     return 1;
 }
 
+int MicroShell_mdir(char **args) {
+    if (args[1] == NULL) {
+        fprintf(stderr, "MicroShell: expected argument\n");
+        return 1;
+    }
+
+    mode_t mode = 0755;
+    if (mkdir(args[1], mode) == -1) {
+        perror("Error creating directory\n");
+        return 1;
+    } else {
+        printf("Directory created\n");
+    }
+    return 1;
+}
+
+int MicroShell_rdir(char **args) {
+    if (args[1] == NULL) {
+        fprintf(stderr, "MicroShell: expected argument\n");
+        return 1;
+    }
+
+    if (rmdir(args[1]) == -1) {
+        perror("Error removing directory\n");
+    } else {
+        printf("Directory removed.\n");
+    }
+    return 1;
+}
+
+int MicroShell_ip(char **args) {
+    char hostbuffer[256];
+    struct hostent *host_entry;
+
+    // Get hostname
+    if (gethostname(hostbuffer, sizeof(hostbuffer)) == -1) {
+        perror("gethostname");
+        return 1;
+    }
+
+    // Get host information
+    host_entry = gethostbyname(hostbuffer);
+    if (host_entry == NULL) {
+        perror("gethostbyname");
+        return 1;
+    }
+
+    // Print all available IP addresses
+    struct in_addr **addresses = (struct in_addr **)host_entry->h_addr_list;
+    int i = 0;
+
+    printf("IP addresses:\n");
+    while(addresses[i] != NULL) {
+        printf("%d: %s\n", i + 1, inet_ntoa(*addresses[i]));
+        i++;
+    }
+
+    return 1;
+}
+
+int MicroShell_pswdrand(char **args) {
+    // Checks if length is there
+    if (args[1] == NULL) {
+        fprintf(stderr, "Usage: pswdrand LENGTH\n");
+        return 1;
+    }
+
+    // Simple conversion using strtol
+    char *endptr;
+    long length = strtol(args[1], &endptr, 10);
+
+    // Validate stuff
+    if (*endptr != '\0' || endptr == args[1]) {
+        fprintf(stderr, "Error: Invalid numeric value '%s'\n", args[1]);
+        return 1;
+    }
+    if (length <= 0) {
+        fprintf(stderr, "Error: Length must be positive\n");
+        return 1;
+    }
+
+    // printf("Password length test: %d\n", length);
+
+    // Memory allocated because why not...
+    char *password = malloc(length + 1);
+
+    char *digits = "0123456789";
+    int digits_len = strlen(digits);
+
+    char *lowers = "abcdefghijklmnopqrstuvwxyz";
+    int lowers_len = strlen(lowers);
+
+    char *uppers = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    int uppers_len = strlen(uppers);
+
+    char *symbols = "~!@#$%^&*()-=_+{}[]|;:<,>.?/";
+    int symbols_len = strlen(symbols);
+
+    // Seed value making sure everything is different on every run
+    srand(time(NULL) * getpid());
+
+    for (int i = 0; i < length; i++)
+    {
+        int char_type = rand() % 4;
+
+
+        if (char_type == 0) {
+            password[i] = digits[rand() % digits_len];
+        } else if (char_type == 1) {
+            password[i] = lowers[rand() % lowers_len];
+        } else if (char_type == 2) {
+            password[i] = uppers[rand() % uppers_len];
+        } else if (char_type == 3) {
+            password[i] = symbols[rand() % symbols_len];
+        }
+    }
+    password[length] = '\0';
+    printf("Password: %s\n", password);
+
+    free(password);
+    return 1;
+}
 
 int MicroShell_help(char **args) {
     int i;
@@ -219,6 +359,7 @@ void MicroShell_loop(void) {
         strncpy(cwd_copy, cwd, sizeof(cwd_copy));
         char *folder = basename(cwd_copy);
         printf("[%s %s]> ", usrname, folder);
+
         line = MicroShell_read_line();
         args = MicroShell_split_line(line);
         status = MicroShell_execute(args);
